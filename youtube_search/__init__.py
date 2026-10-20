@@ -43,13 +43,17 @@ class YoutubeSearch:
         to_json: Return the videos as a JSON string and optionally clear the cache.
     """
 
-    def __init__(self, search_terms: str, max_results=None, youtube_filter: str=None):
+    def __init__(self, search_terms: str, max_results=None, proxy={}, retries=3, timeout=10, youtube_filter: str=None):
         """
         Initialize a YoutubeSearch object with search terms and optional maximum results.
 
         Args:
             search_terms (str): The search terms to use for the YouTube search.
             max_results (int, optional): The maximum number of results to retrieve.
+            proxy (dict, optional): Proxies passed to requests.
+            retries (int, optional): Extra attempts if the page lacks ytInitialData.
+            timeout (int, optional): Request timeout in seconds.
+            youtube_filter (str, optional): Encoded YouTube search filter (see YouTubeFilters).
 
         Returns:
             None
@@ -58,6 +62,9 @@ class YoutubeSearch:
         self.search_terms = search_terms
         self.max_results = max_results
         self.youtube_filter = youtube_filter
+        self.proxy = proxy
+        self.retries = retries
+        self.timeout = timeout
         self.videos = self._search()
 
     def _search(self):
@@ -75,11 +82,15 @@ class YoutubeSearch:
         if self.youtube_filter:
             url = f"{BASE_URL}/results?search_query={encoded_search}&sp={self.youtube_filter}"
         else:
-            url = f"{BASE_URL}/results?search_query={encoded_search}" 
-        # print(url)
-        response = requests.get(url).text
-        while "ytInitialData" not in response:
-            response = requests.get(url).text
+            url = f"{BASE_URL}/results?search_query={encoded_search}"
+
+        attempts = 1
+        response = requests.get(url, proxies=self.proxy, timeout=self.timeout).text
+
+        while "ytInitialData" not in response and attempts <= self.retries:
+            response = requests.get(url, proxies=self.proxy, timeout=self.timeout).text
+            attempts += 1
+
         results = self._parse_html(response)
         if self.max_results is not None and len(results) > self.max_results:
             return results[: self.max_results]
